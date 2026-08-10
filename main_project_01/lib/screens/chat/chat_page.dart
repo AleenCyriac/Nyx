@@ -2,13 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
-class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+class ChatPage extends StatefulWidget {
+  final int userId;
+  final int receiverId;
+  final String receiverName;
+  const ChatPage({super.key,required this.userId,required this.receiverId,required this.receiverName});
 
   @override
-  State<HomePage> createState() => _HomePageState();
+  State<ChatPage> createState() => _ChatPageState();
 }
-class _HomePageState extends State<HomePage>
+class _ChatPageState extends State<ChatPage>
 {
   List<dynamic> messages = [];
   final TextEditingController messageController = TextEditingController();
@@ -20,10 +23,14 @@ class _HomePageState extends State<HomePage>
         headers: {
           "Content-Type": "application/json",
         },
+
         body: jsonEncode({
+          "sender_id": widget.userId,
+          "receiver_id": widget.receiverId,
           "message": messageController.text.trim(),
         }),
       );
+
       if (messageController.text.trim().isEmpty) {
         return;
       }
@@ -42,7 +49,7 @@ class _HomePageState extends State<HomePage>
   Future<void> fetchMessage() async {
     try {
       final response = await http.get(
-        Uri.parse("http://localhost:3000/messages"),
+        Uri.parse("http://localhost:3000/messages/${widget.userId}/${widget.receiverId}",),
       );
 
       if (!mounted) return;
@@ -52,7 +59,6 @@ class _HomePageState extends State<HomePage>
         setState(() {
           messages = data["messages"];
         });
-
         messageController.clear();
       }else {
         debugPrint("Failed to load messages");
@@ -65,12 +71,13 @@ class _HomePageState extends State<HomePage>
   void initState() {
     super.initState();
     fetchMessage();
+
   }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Hybrid Chat"),
+        title: Text(widget.receiverName),
         centerTitle: true,
       ),
       body: Column(
@@ -111,11 +118,6 @@ class _HomePageState extends State<HomePage>
           ),
         ],
       ),
-      /*  onPressed: () {
-          // We'll use this later to start a new chat
-        },
-        child: const Icon(Icons.chat),
-      ),*/
     );
   }
 }
