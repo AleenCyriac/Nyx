@@ -14,6 +14,9 @@ app.use(authRoutes);
 const chatRoutes = require("./routes/chatRoutes");
 app.use(chatRoutes);
 
+const userRoutes = require("./routes/userRoutes");
+app.use(userRoutes);
+
 const PORT = 3000;
 
 app.get("/", (req, res) => {

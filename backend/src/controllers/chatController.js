@@ -1,10 +1,11 @@
 const pool = require("../config/db");
 exports.postChat = async (req, res) => {
 
-    const { message } = req.body;
-    await pool.query("INSERT INTO messages (message) VALUES ($1)", [message]);
+    const { sender_id,receiver_id,message } = req.body;
+    await pool.query("INSERT INTO messages (sender_id,receiver_id,message) VALUES ($1, $2, $3)", [sender_id, receiver_id, message]);
 
-     console.log("Received message:", message);
+
+    
         res.json({
             success: true,
             message: "Message received"
@@ -12,9 +13,19 @@ exports.postChat = async (req, res) => {
     };
 exports.getChat = async (req, res) => {
     try {
-        const messagesQuery = await pool.query("SELECT * FROM messages ORDER BY created_at ASC");
+        const { senderId, receiverId } = req.params;
+         const messagesQuery = await pool.query(
+            `SELECT *
+             FROM messages
+             WHERE
+             (sender_id = $1 AND receiver_id = $2)
+             OR
+             (sender_id = $2 AND receiver_id = $1)
+             ORDER BY created_at ASC`,
+            [senderId, receiverId]
+        );
         res.json({
-            success: true,
+           success: true,
             messages: messagesQuery.rows
         });
        

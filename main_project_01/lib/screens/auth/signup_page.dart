@@ -19,6 +19,11 @@ class _SignupPageState extends State<SignupPage>{
   final TextEditingController _phoneNoController = TextEditingController();
 
   bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
+
+  /*final Color primaryBlue = const Color(0xFF003087);
+  final Color backgroundBlue = const Color(0xFFDCE7FA);*/
+
   @override
   void dispose(){
     _userNameController.dispose();
@@ -138,19 +143,19 @@ class _SignupPageState extends State<SignupPage>{
                   const SizedBox(height: 10),
                   TextField(
                     controller:  _passwordCheckerController ,
-                    obscureText: _obscurePassword,
+                    obscureText: _obscureConfirmPassword,
                     decoration: InputDecoration(
                       labelText: "Confirm Password",
                       border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          _obscurePassword
+                          _obscureConfirmPassword
                               ? Icons.visibility
                               : Icons.visibility_off,
                         ),
                         onPressed: () {
                           setState(() {
-                            _obscurePassword = !_obscurePassword;
+                            _obscureConfirmPassword = !_obscureConfirmPassword;
                           });
                         },
                       ),
