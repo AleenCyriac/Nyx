@@ -2,10 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../chat/chat_page.dart';
+import 'package:main_project_01/services/lan_discovery_service.dart';
+import 'package:main_project_01/services/lan_tcp_service.dart';
 
 class AddContactPage extends StatefulWidget {
   final int userId;
-  const AddContactPage({super.key, required this.userId});
+  final LanDiscoveryService lanDiscoveryService;
+  final LanTcpService lanTcpService;
+  const AddContactPage({super.key, required this.userId,required this.lanDiscoveryService,
+    required this.lanTcpService,});
 
   @override
   State<AddContactPage> createState() => _AddContactPageState();
@@ -20,7 +25,7 @@ class _AddContactPageState extends State<AddContactPage>
   Future<void> searchContact() async {  ///to search for a contact with phone number
     try {
       final response = await http.get(
-        Uri.parse("http://localhost:3000/user/phone/${phoneController.text.trim()}",),
+        Uri.parse("http://192.168.1.33:3000/user/phone/${phoneController.text.trim()}",),
       );
 
       if (!mounted) return;
@@ -45,7 +50,7 @@ class _AddContactPageState extends State<AddContactPage>
   Future<void> saveContact() async {
     try {
       final response = await http.post(
-        Uri.parse("http://localhost:3000/contact"),
+        Uri.parse("http://192.168.1.33:3000/contact"),
         headers: {
           "Content-Type": "application/json",
         },
@@ -109,6 +114,8 @@ class _AddContactPageState extends State<AddContactPage>
                       userId: widget.userId,
                       receiverId: foundUser!["id"],
                       receiverName: foundUser!["name"],
+                      lanDiscoveryService: widget.lanDiscoveryService,
+                      lanTcpService: widget.lanTcpService,
                     ),
                   ),
                 );

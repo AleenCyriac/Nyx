@@ -3,6 +3,10 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../chat/chat_page.dart';
 import '../contacts/add_contact_page.dart';
+import 'package:main_project_01/services/lan_discovery_service.dart';
+import 'package:main_project_01/services/lan_tcp_service.dart';
+import 'dart:async';
+import 'package:main_project_01/services/pending_message_store.dart';
 
 class HomePage extends StatefulWidget {
   final int userId;
@@ -15,11 +19,22 @@ class _HomePageState extends State<HomePage>
 {
 List<Map<String, dynamic>> contacts = [];
   List<Map<String, dynamic>> filteredContacts = [];
+
+  //lan
+final LanDiscoveryService _lanDiscoveryService =
+LanDiscoveryService();
+
+
+final LanTcpService _lanTcpService = LanTcpService();
+
+final PendingMessageStore _messageStore = PendingMessageStore();
+StreamSubscription<Map<String, dynamic>>? _incomingSubscription;
+//lan
 Future<void> fetchContacts() async {
   try {
     final response = await http.get(
       Uri.parse(
-        "http://localhost:3000/contacts/${widget.userId}",
+        "http://192.168.1.33:3000/contacts/${widget.userId}",
       ),
     );
 
@@ -59,11 +74,62 @@ Future<void> fetchContacts() async {
       }).toList();
     });
   }
+
   @override
   void initState() {
     super.initState();
     fetchContacts();
+
+    _incomingSubscription =
+        _lanTcpService.incomingMessages.listen((data) async {
+          final senderId = int.tryParse(data['sender_id'].toString());
+          final receiverId = int.tryParse(data['receiver_id'].toString());
+
+          if (senderId == null ||
+              receiverId != widget.userId ||
+              data['type'] != 'chat') {
+            return;
+          }
+
+          await _messageStore.saveConversationMessage(
+            widget.userId,
+            senderId,
+            data,
+          );
+
+          debugPrint('Incoming LAN message saved locally.');
+        });
+
+    _startLanServices();
   }
+
+  Future<void> _startLanServices() async {
+    try {
+      await _lanTcpService.start(
+        onMessage: (message) {
+          debugPrint('TCP MESSAGE RECEIVED: $message');
+        },
+      );
+
+      await _lanDiscoveryService.start(userId: widget.userId);
+    } catch (e) {
+      debugPrint('Could not start LAN services: $e');
+      // Cloud messaging should remain available.
+    }
+  }
+
+  //lan
+
+  @override
+  void dispose() {
+    _incomingSubscription?.cancel();
+    searchController.dispose();
+    _lanDiscoveryService.stop();
+    _lanTcpService.stop();
+    super.dispose();
+  }
+
+  //lan
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -82,6 +148,8 @@ Future<void> fetchContacts() async {
               onChanged: searchContacts,
             ),
           ),
+
+
 
           Expanded(
             child: ListView.builder(
@@ -103,6 +171,8 @@ Future<void> fetchContacts() async {
                           userId: widget.userId,
                           receiverId: contact["userId"],
                           receiverName: contact["name"],
+                          lanDiscoveryService: _lanDiscoveryService,
+                          lanTcpService: _lanTcpService,
                         ),
                       ),
                     );
@@ -119,7 +189,9 @@ Future<void> fetchContacts() async {
           final result = await Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => AddContactPage(userId: widget.userId),
+              builder: (context) => AddContactPage(userId: widget.userId,
+                lanDiscoveryService: _lanDiscoveryService,
+                lanTcpService: _lanTcpService,),
             ),
           );
           if (result == true) {

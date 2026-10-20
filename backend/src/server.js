@@ -84,6 +84,36 @@ app.get("/", (req, res) => {
     res.send("Hybrid Chat Backend is running!");
 });
 
+//LAN
+app.get('/lan-test', (req, res) => {
+  res.json({
+    success: true,
+    message: 'LAN connection successful!'
+  });
+});
+
+
+app.post('/lan-message', (req, res) => {
+  const { message } = req.body;
+
+  if (typeof message !== 'string' || !message.trim()) {
+    return res.status(400).json({
+      success: false,
+      message: 'A message is required',
+    });
+  }
+
+  console.log('LAN message received:', message);
+
+  res.json({
+    success: true,
+    receivedMessage: message,
+    reply: 'Message received by the LAN server!',
+  });
+});
+
+//LAN-end
+
 pool.query("SELECT NOW()", (err, result) => {
     if (err) {
         console.error("Database connection failed:", err.message);

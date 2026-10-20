@@ -1,16 +1,40 @@
 const pool = require("../config/db");
+
 exports.postChat = async (req, res) => {
+  try {
+    const {
+      sender_id,
+      receiver_id,
+      message,
+      client_message_id,
+    } = req.body;
 
-    const { sender_id,receiver_id,message } = req.body;
-    await pool.query("INSERT INTO messages (sender_id,receiver_id,message) VALUES ($1, $2, $3)", [sender_id, receiver_id, message]);
+    await pool.query(
+      `INSERT INTO messages
+        (sender_id, receiver_id, message, client_message_id)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (client_message_id) DO NOTHING`,
+      [
+        sender_id,
+        receiver_id,
+        message,
+        client_message_id ?? null,
+      ]
+    );
 
+    res.json({
+      success: true,
+      message: "Message saved",
+    });
+  } catch (error) {
+    console.error("Error saving message:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to save message",
+    });
+  }
+};
 
-    
-        res.json({
-            success: true,
-            message: "Message received"
-        });
-    };
 exports.getChat = async (req, res) => {
     try {
         const { senderId, receiverId } = req.params;

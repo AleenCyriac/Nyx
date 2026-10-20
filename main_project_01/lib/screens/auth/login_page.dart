@@ -3,6 +3,7 @@ import '../homepage/home_page.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+
 class LoginPage extends StatefulWidget {
   final VoidCallback onSignUpPressed;
 
@@ -27,9 +28,10 @@ void dispose(){
 }
 
   Future<void> login() async {
+    debugPrint('LOGIN BUTTON PRESSED');
   try {
     final response = await http.post(
-      Uri.parse("http://localhost:3000/login"),
+      Uri.parse("http://192.168.1.33:3000/login"),
       headers: {
         "Content-Type": "application/json",
       },
