@@ -7,6 +7,11 @@ import 'dart:async';
 import 'package:main_project_01/services/lan_discovery_service.dart';
 import 'package:main_project_01/services/lan_tcp_service.dart';
 import 'package:main_project_01/services/pending_message_store.dart';
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
+import 'package:main_project_01/services/lan_file_transfer_service.dart';
+import 'package:main_project_01/services/attachment_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ChatPage extends StatefulWidget {
   final int userId;
@@ -23,6 +28,126 @@ class ChatPage extends StatefulWidget {
 }
 class _ChatPageState extends State<ChatPage>
 {
+  //for opening attachments(pdf's)
+
+
+  Future<void> _openAttachment(String url) async {
+    final uri = Uri.tryParse(url);
+
+    if (uri == null ||
+        (uri.scheme != 'http' && uri.scheme != 'https')) {
+      debugPrint('Invalid attachment URL: $url');
+      return;
+    }
+
+    try {
+      final opened = await launchUrl(
+        uri,
+        mode: LaunchMode.platformDefault,
+        webOnlyWindowName: '_blank',
+      );
+
+      debugPrint('Attachment URL: $url');
+      debugPrint('Attachment opened: $opened');
+
+      if (!opened && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not open attachment. Check the debug console.'),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Open attachment error: $e');
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Open failed: $e')),
+      );
+    }
+  }
+
+
+  //file -to shoe images and files
+  Widget _buildMessageContent(dynamic rawMessage) {
+    Map<String, dynamic>? decoded;
+
+    if (rawMessage is String) {
+      try {
+        final value = jsonDecode(rawMessage);
+        if (value is Map) {
+          decoded = Map<String, dynamic>.from(value);
+        }
+      } catch (_) {
+        // Ordinary text message.
+      }
+    } else if (rawMessage is Map) {
+      decoded = Map<String, dynamic>.from(rawMessage);
+    }
+
+    if (decoded == null || decoded['type'] != 'attachment') {
+      return Text((rawMessage ?? '').toString());
+    }
+
+    final rawAttachment = decoded['attachment'];
+
+    if (rawAttachment is! Map) {
+      return const Text('Attachment details unavailable');
+    }
+
+    final attachment = Map<String, dynamic>.from(rawAttachment);
+    final name = (attachment['file_name'] ?? 'File').toString();
+    final mimeType = (attachment['mime_type'] ?? '').toString();
+    var url = (attachment['file_url'] ?? '').toString();
+
+    if (url.startsWith('/')) {
+      url = 'http://192.168.1.33:3000$url';
+    }
+
+    final isImage = mimeType.startsWith('image/') ||
+        name.toLowerCase().endsWith('.png') ||
+        name.toLowerCase().endsWith('.jpg') ||
+        name.toLowerCase().endsWith('.jpeg') ||
+        name.toLowerCase().endsWith('.gif') ||
+        name.toLowerCase().endsWith('.webp');
+
+    final isPdf = name.toLowerCase().endsWith('.pdf');
+
+    if (isImage && url.isNotEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(name),
+          const SizedBox(height: 8),
+          Image.network(
+            url,
+            width: 220,
+            errorBuilder: (context, error, stackTrace) {
+              return const Text('Could not load image');
+            },
+          ),
+        ],
+      );
+    }
+
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(
+        isPdf ? Icons.picture_as_pdf : Icons.insert_drive_file,
+      ),
+      title: Text(name),
+      subtitle: Text(
+        '${(attachment['file_size'] ?? 0)} bytes',
+      ),
+      trailing: const Icon(Icons.open_in_new),
+      onTap: url.isEmpty ? null : () => _openAttachment(url),
+    );
+  }
+
+
+
+  //file-end
   //lan
   StreamSubscription<Map<String, dynamic>>? _lanSubscription;
 
@@ -30,6 +155,98 @@ class _ChatPageState extends State<ChatPage>
 
   Timer? _syncTimer;
   bool _isSyncing = false;
+
+  //file transfer service
+  final AttachmentService _attachmentService = AttachmentService();
+  final LanFileTransferService _fileTransferService =
+  LanFileTransferService();
+
+  StreamSubscription<Map<String, dynamic>>? _fileSubscription;
+
+//file picker attachment
+
+
+
+  Future<void> _pickAttachment() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+        allowMultiple: false,
+        withData: true,
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      final file = result.files.single;
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Uploading ${file.name}...')),
+      );
+
+      final attachment = await _attachmentService.uploadFile(
+        file: file,
+        senderId: widget.userId,
+        receiverId: widget.receiverId,
+      );
+
+      final messageId =
+          '${widget.userId}_${DateTime.now().microsecondsSinceEpoch}';
+
+      final messageData = <String, dynamic>{
+        'sender_id': widget.userId,
+        'receiver_id': widget.receiverId,
+        'message': jsonEncode({
+          'type': 'attachment',
+          'attachment': attachment,
+        }),
+        'message_id': messageId,
+        'client_message_id': messageId,
+        'created_at': DateTime.now().toIso8601String(),
+        'type': 'attachment',
+      };
+
+      await _pendingStore.saveConversationMessage(
+        widget.userId,
+        widget.receiverId,
+        messageData,
+      );
+
+      await _pendingStore.savePendingMessage(
+        widget.userId,
+        messageData,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        messages = _mergeMessages(messages, [messageData]);
+      });
+
+      if (socket.connected) {
+        socket.emit('send_message', messageData);
+      }
+
+      await _syncPendingMessages();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${file.name} attached to the chat.')),
+      );
+    } catch (e) {
+      debugPrint('Attachment sending failed: $e');
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not send attachment. Check the connection.'),
+        ),
+      );
+    }
+  }
 
 
   Future<void> _syncPendingMessages() async {
@@ -315,11 +532,48 @@ class _ChatPageState extends State<ChatPage>
     socket.dispose();
     super.dispose();
     _syncTimer?.cancel();
+    _fileSubscription?.cancel();
+    _fileTransferService.dispose();
   }
   //lan
   @override
   void initState() {
     super.initState();
+
+    //file-sharing
+    _fileSubscription =
+        _fileTransferService.receivedFiles.listen((fileData) {
+          if (!mounted) return;
+
+          final senderId = int.tryParse(
+            (fileData['sender_id'] ?? '').toString(),
+          );
+
+          final receiverId = int.tryParse(
+            (fileData['receiver_id'] ?? '').toString(),
+          );
+
+          // Only show files intended for this logged-in user
+          // and from the person in the open conversation.
+          if (senderId != widget.receiverId ||
+              receiverId != widget.userId) {
+            return;
+          }
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'File received: ${fileData['file_name']}',
+              ),
+            ),
+          );
+
+          debugPrint('Received file details: $fileData');
+        });
+
+    _fileTransferService.start().catchError((error) {
+      debugPrint('Could not start LAN file listener: $error');
+    });
 
     // Load local messages first, then fetch cloud history.
     _loadLocalHistory();
@@ -363,6 +617,9 @@ class _ChatPageState extends State<ChatPage>
       );
     });
   }
+
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -376,8 +633,9 @@ class _ChatPageState extends State<ChatPage>
             child: ListView.builder(
               itemCount: messages.length,
               itemBuilder: (context, index) {
+                debugPrint('CHAT MESSAGE DATA: ${messages[index]}');
                 return ListTile(
-                  title: Text(messages[index]["message"]),
+                  title: _buildMessageContent(messages[index]["message"]),
                 );
               },
             ),
@@ -387,6 +645,11 @@ class _ChatPageState extends State<ChatPage>
             padding: const EdgeInsets.all(8.0),
             child: Row(
               children: [
+                IconButton(
+                  onPressed: _pickAttachment,
+                  icon: const Icon(Icons.attach_file),
+                  tooltip: 'Attach a file or image',
+                ),
                 Expanded(
                   child: TextField(
                     controller: messageController,

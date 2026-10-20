@@ -2,6 +2,8 @@ const pool = require("./config/db");
 const express = require("express");
 const cors = require("cors");
 const app = express();
+//crome-file sharing route
+const attachmentRoutes = require("./routes/attachmentRoutes");
 
 const { Server } = require("socket.io");
 const http = require("http");
@@ -68,6 +70,7 @@ io.on("disconnect", (socket) => {
 
 app.use(cors());
 app.use(express.json());
+app.use("/attachments", attachmentRoutes);
 
 const authRoutes = require("./routes/authRoutes");
 app.use(authRoutes);
